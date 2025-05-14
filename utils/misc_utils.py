@@ -2,16 +2,21 @@ import torch
 import torch.nn.functional as F
 import os
 import numpy as np
-
+#### normalization có sửa thêm chút
 
 def image_normalization(norm_type):
     def _inner(tensor: torch.Tensor):
+        if torch.isnan(tensor).any():
+            print("[ERROR] Input tensor contains NaN values before normalization")
         if norm_type == 'normalization':
-            return tensor / 255.0
+            result = tensor / 255.0
         elif norm_type == 'denormalization':
-            return tensor * 255.0
+            result = tensor * 255.0
         else:
             raise Exception('Unknown type of normalization')
+        if torch.isnan(result).any():
+            print("[ERROR] Output tensor contains NaN values after normalization")
+        return result
     return _inner
 
 

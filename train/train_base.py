@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from utils.metric_utils import get_psnr, view_model_param
 from utils.data_utils import image_normalization
 from channels.channel_base import Channel
-
+from dataset.getds import get_ds
 
 class BaseTrainer:
     def __init__(self, args):
@@ -39,18 +39,35 @@ class BaseTrainer:
         self.num_workers = args.wk
 
     def _setup_dirs(self):
-
         out_dir = self.args.out
         
-        phaser = str(self.args.ds).upper() + '_' + str(self.args.base_snr) + '_' + str(self.args.ratio) + '_' + str(self.args.channel_type) + \
-            '_' + time.strftime('%Hh%Mm%Ss_on_%b_%d_%Y')
+        phaser = str(self.args.ds).upper() + '_' + str(self.args.base_snr) + '_' + str(self.args.ratio) + '_' + \
+                 str(self.args.channel_type) + '_' + str(self.args.algo) + '_channels_' + str(self.args.num_channels) + \
+                 '_bs_' + str(self.args.bs) + '_' + time.strftime('%Hh%Mm%Ss_on_%b_%d_%Y')
         
         self.root_log_dir = out_dir + '/' + 'logs/' + phaser
         self.root_ckpt_dir = out_dir + '/' + 'checkpoints/' + phaser
         self.root_config_dir = out_dir + '/' + 'configs/' + phaser
         self.writer = SummaryWriter(log_dir=self.root_log_dir)
 
-        self.writer.add_text('config', json.dumps(self.params, indent=4))
+        # Lọc các đối tượng không tuần tự hóa được
+        def filter_non_serializable(obj):
+            if isinstance(obj, (str, int, float, bool, list, dict, type(None))):
+                return obj
+            return str(obj)  # Chuyển các đối tượng không tuần tự hóa được thành chuỗi
+
+        filtered_params = {k: filter_non_serializable(v) for k, v in self.params.items()}
+
+        # In nội dung của filtered_params để kiểm tra
+        print("Filtered Params:")
+        for key, value in filtered_params.items():
+            print(f"{key}: {value} ({type(value)})")
+
+        try:
+            self.writer.add_text('config', json.dumps(filtered_params, indent=4))
+        except TypeError as e:
+            print(f"Error serializing params: {e}")
+            print(f"Filtered params: {filtered_params}")
     
     def _setup_model(self):
         
@@ -67,13 +84,19 @@ class BaseTrainer:
         epoch_loss = 0
 
         with torch.no_grad():
-            for iter, (images, _) in enumerate(self.test_dl):
+            for iter, batch in enumerate(self.test_dl):
+                if isinstance(batch, (tuple, list)) and len(batch) == 2:
+                    images, _ = batch
+                else:
+                    images = batch
                 images = images.cuda() if self.parallel and torch.cuda.device_count(
                 ) > 1 else images.to(self.device)
-                outputs = self.model(images)
-                outputs = image_normalization('denormalization')(outputs)
-                images = image_normalization('denormalization')(images)
-                loss = self.criterion(self.args, images, outputs) if not self.parallel else self.criterion(
+                model_out = self.model(images)
+                if isinstance(model_out, tuple):
+                    outputs = model_out[0]
+                else:
+                    outputs = model_out
+                loss = self.criterion(images, outputs) if not self.parallel else self.criterion(
                     images, outputs)
                 epoch_loss += loss.detach().item()
             epoch_loss /= (iter + 1)
@@ -134,14 +157,16 @@ class BaseTrainer:
         # del self.writer
 
     def save_model(self, epoch, model):
+        # Lấy tên dataset, thuật toán và số lượng kênh
+        dataset_name = self.args.ds.upper() if hasattr(self.args, 'ds') else "DATASET"
+        algo_name = self.args.algo if hasattr(self.args, 'algo') else "model"
+        num_channels = self.args.num_channels if hasattr(self.args, 'num_channels') else "channels"
+
+        # Tạo đường dẫn lưu checkpoint
         if not os.path.exists(self.root_ckpt_dir):
             os.makedirs(self.root_ckpt_dir)
-        torch.save(model.state_dict(), '{}.pkl'.format(
-            self.root_ckpt_dir + "/epoch_" + str(epoch)))
+        checkpoint_path = os.path.join(self.root_ckpt_dir, f"{dataset_name}_{algo_name}_channels_{num_channels}_snr_{self.args.base_snr}_epoch_{epoch}.pkl")
         
-        files = glob(self.root_ckpt_dir + '/*.pkl')
-        for file in files:
-            epoch_nb = file.split('_')[-1]
-            epoch_nb = int(epoch_nb.split('.')[0])
-            if epoch_nb < epoch - 1:
-                os.remove(file)
+        # Lưu checkpoint
+        torch.save(model.state_dict(), checkpoint_path)
+        print(f"Model saved to {checkpoint_path}")

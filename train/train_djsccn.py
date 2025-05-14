@@ -14,6 +14,7 @@ class DJSCCNTrainer(BaseTrainer):
     def __init__(self, args):
         super().__init__(args)
         
+        # Truyền args trực tiếp vào DJSCCN_CIFAR
         self.model = DJSCCN_CIFAR(self.args, self.in_channel, self.class_num).to(self.device)
         self.optimizer = Adam(self.model.parameters(), lr=self.args.lr)
         self.criterion = DJSCCNLoss()
@@ -61,10 +62,9 @@ class DJSCCNLoss(nn.Module):
         super().__init__()
 
         self.rec_loss = nn.MSELoss()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Remove index=0
 
     def forward(self, args, rec, img):
         rec_loss = self.rec_loss(rec, img)
-        total_loss = args.rec_coeff * rec_loss
-
+        total_loss = args.rec_coeff * rec_loss        
         return total_loss

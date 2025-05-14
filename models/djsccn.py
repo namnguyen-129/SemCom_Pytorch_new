@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
-from channels.channel_base import Channel
+from channels.channel_base import Channel  
 from models.model_base import BaseModel
 
 
@@ -13,10 +13,10 @@ class DJSCCN_CIFAR(BaseModel):
 
         self.channel_type = "AWGN"
         self.base_snr = None
-        self.channel = Channel(channel_type="AWGN", snr = args.base_snr)
+        self.channel = Channel(channel_type="AWGN", snr=args.base_snr)
 
         self.encoder = nn.Sequential(
-            nn.Conv2d(self.in_channel, 32, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(in_channel, 32, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
             nn.BatchNorm2d(32),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
@@ -34,12 +34,12 @@ class DJSCCN_CIFAR(BaseModel):
             nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.BatchNorm2d(32),
-            nn.Conv2d(in_channels=32, out_channels=self.var_cdim, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=32, out_channels=args.var_cdim, kernel_size=3, padding=1),
             nn.ReLU(),
         )
 
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(self.var_cdim, 64, kernel_size=3, stride=1, padding=1),
+            nn.ConvTranspose2d(args.var_cdim, 64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.BatchNorm2d(64),
             nn.ConvTranspose2d(64, 64, kernel_size=3, stride=1, padding=1),
@@ -53,10 +53,20 @@ class DJSCCN_CIFAR(BaseModel):
         )
 
     def forward(self, x):
+        print(f"Input size: {x.size()}")  # In kích thước đầu vào
+
         z = self.encoder(x)
+        print(f"Size after encoder: {z.size()}")  # In kích thước sau encoder
+
         z = self.normalize_layer(z)
+        print(f"Size after normalization: {z.size()}")  # In kích thước sau normalize
+
         z = self.channel(z)
+        print(f"Size after channel: {z.size()}")  # In kích thước sau channel
+
         x_hat = self.decoder(z)
+        print(f"Size after decoder: {x_hat.size()}")  # In kích thước sau decoder
+
         return x_hat
 
     def get_latent(self, x):
